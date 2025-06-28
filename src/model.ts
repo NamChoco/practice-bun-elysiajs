@@ -1,5 +1,5 @@
+import { password } from "bun";
 import { Database } from "bun:sqlite";
-import { status } from "elysia";
 
 const db = new Database("mydb.db");
 
@@ -27,14 +27,15 @@ const getMember = (id: number) => {
 
 const createMember = ( member : any ) => {
     try {
-        if (!member.name || !member.email || !member.date_of_birth){
+        if (!member.name || !member.email || !member.date_of_birth || !member.password){
             throw new Error('Validation Fail')
         }
-        const query = db.query(`INSERT INTO member (name, email, date_of_birth) VALUES ($name, $email, $date_of_birth);`)
+        const query = db.query(`INSERT INTO member (name, email, date_of_birth, password) VALUES ($name, $email, $date_of_birth, $password);`)
         query.run({
             $name: member.name,
             $email: member.email,
-            $date_of_birth: member.date_of_birth
+            $date_of_birth: member.date_of_birth,
+            $password: member.password
         })
         return { status: 'ok' }
     } catch (error) {
@@ -68,24 +69,20 @@ const deleteMember = (id: number) => {
         return { status: 'ok' }
     } catch (error) {
         console.log("Error: " + error)
-        return
+        return { status: 'error' }
     }
 }
 
-// console.log(getMembers(2))
-
-// console.log(createMember({
-//     name: "Kaimook",
-//     email: "kaimook@gmail.com",
-//     date_of_birth: "2002-08-06"
-// }))
-
-// console.log(updateMember(1, {
-//     name: "A",
-//     email: "B@gmail.com",
-//     date_of_birth: "2002-08-06"
-// }))
-
+const login = (email: string) => {
+    try {
+        const query = db.query(`SELECT * FROM member WHERE email = $email LIMIT 1`)
+        const user = query.get({ $email: email })
+        return user ?? null
+    } catch (error) {
+        console.log("Login error: ", error)
+        return { status: 'error' }
+    }
+}
 
 export {
     getMember,
@@ -93,4 +90,5 @@ export {
     createMember,
     updateMember,
     deleteMember,
+    login
 }
