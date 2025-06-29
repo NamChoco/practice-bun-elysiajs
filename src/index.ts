@@ -3,29 +3,26 @@ import { createMember, deleteMember, getMember, getMembers, login, updateMember 
 import swagger from '@elysiajs/swagger';
 import cookie from '@elysiajs/cookie'
 import jwt from '@elysiajs/jwt';
-const jwtSecret = Bun.env.JWT_SECRET
 
+const jwtSecret = Bun.env.JWT_SECRET
 if (!jwtSecret) {
-  throw new Error("JWT_SECRET is not defined in .env")
+  throw new Error('JWT_SECRET is not defined in .env')
 }
 
 const app = new Elysia()
   .use(cookie())
-  .use(
-    jwt({
-      name: 'jwt',
-      secret: jwtSecret!,
-      exp: '7d'
-    })
-  )
+  .use(jwt({
+    name: 'jwt',
+    secret: jwtSecret,
+    exp: '7d'
+  }))
+  .use(swagger())
 
-app.use(swagger())
-
-// Get member all
+// Public APIs
 app.get('/', () => getMembers())
-// Get member by ID
+
 app.get('/member/:id', ({ params }) => getMember(parseInt(params.id)))
-// Create member
+
 app.post('/member', ({ body, set }) => {
   const response = createMember(body)
   if (response?.status === 'error') {
@@ -40,7 +37,7 @@ app.post('/member', ({ body, set }) => {
     date_of_birth: t.String(),
   })
 })
-// Update member
+
 app.put('/member/:id', ({ params, body, set }) => {
   const response = updateMember(parseInt(params.id), body)
   if (response?.status === 'error') {
@@ -56,7 +53,7 @@ app.put('/member/:id', ({ params, body, set }) => {
     password: t.String(),
   })
 })
-// Delete member
+
 app.delete('/member/:id', ({ params, set }) => {
   const response = deleteMember(parseInt(params.id))
   if (response?.status === 'error') {
@@ -66,66 +63,66 @@ app.delete('/member/:id', ({ params, set }) => {
   return { message: 'ok' }
 })
 
-// User API
+// User Registration
 app.post('/register', async ({ body, set }) => {
   try {
-    let userData: any = body
+    const userData = { ...body }
     userData.password = await Bun.password.hash(userData.password, {
-      algorithm: "bcrypt",
-      cost: 4, // number between 4-31
-    });
+      algorithm: 'bcrypt',
+      cost: 4
+    })
     createMember(userData)
     return { message: 'Create user successful!' }
   } catch (error) {
     set.status = 500
-    return { message: 'error', error }
+    return { message: 'error', error: (error as Error).message }
   }
 }, {
   body: t.Object({
     name: t.String(),
     email: t.String(),
     date_of_birth: t.String(),
-    password: t.String(),
+    password: t.String()
   })
 })
 
-app.post('/login', async (ctx: any) => {
-  const { body, set } = ctx
-  const setCookie = ctx.setCookie
-  const jwt = ctx.jwt
+// User Login
+app.post('/login', async ({ body, set, cookie, jwt }) => {
+  try {
+    const user = login(body.email) as Record<string, any>
 
-  const user = login(body.email) as Record<string, any>
-  console.log('🔍 Found user:', user)
+    if (!user) {
+      set.status = 401
+      return { message: 'Invalid email or password' }
+    }
 
-  if (!user) {
-    set.status = 401
-    return { message: 'Invalid email or password' }
-  }
+    const match = await Bun.password.verify(body.password, user.password)
+    if (!match) {
+      set.status = 401
+      return { message: 'Invalid email or password' }
+    }
 
-  const match = await Bun.password.verify(body.password, user.password)
-  console.log('🔐 Password match:', match)
+    const token = await jwt.sign({
+      id: user.id,
+      name: user.name,
+      email: user.email
+    })
 
-  if (!match) {
-    set.status = 401
-    return { message: 'Invalid email or password' }
-  }
+    // Set JWT in signed cookie
+    cookie.token.set({
+      value: token,
+      httpOnly: true,
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7
+    })
 
-  const token = await jwt.sign({
-    id: user.id,
-    name: user.name,
-    email: user.email
-  })
-
-  setCookie('token', token, {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/',
-    sameSite: 'strict'
-  })
-
-  return {
-    message: 'Login successful',
-    token
+    return {
+      message: 'Login successful',
+      token // Optional: remove from response if only using cookie
+    }
+  } catch (error) {
+    set.status = 500
+    return { message: 'error', error: (error as Error).message }
   }
 }, {
   body: t.Object({
@@ -133,10 +130,6 @@ app.post('/login', async (ctx: any) => {
     password: t.String()
   })
 })
-
-
-
-
 
 app.listen(8080);
 
